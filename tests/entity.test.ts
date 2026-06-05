@@ -376,6 +376,28 @@ describe('errorHandler middleware unit tests', () => {
         });
     });
 
+    it('should handle ZodError', () => {
+        const { ZodError } = require('zod');
+        const err = new ZodError([
+            {
+                code: 'too_small',
+                minimum: 8,
+                type: 'string',
+                inclusive: true,
+                exact: false,
+                message: 'Password must be at least 8 characters long',
+                path: ['password']
+            }
+        ]);
+        errorHandler(err, mockRequest, mockResponse, mockNext);
+        expect(mockResponse.status).toHaveBeenCalledWith(400);
+        expect(mockResponse.json).toHaveBeenCalledWith({
+            status: 'error',
+            message: 'Validation error',
+            errors: [{ path: 'password', message: 'Password must be at least 8 characters long' }]
+        });
+    });
+
     it('should handle duplicate key error (11000)', () => {
         const err = {
             code: 11000,
@@ -466,6 +488,262 @@ describe('Storage edge cases', () => {
         });
         const result = await entityStorage.findAll({ sort: 'invalidField' });
         expect(result.data.length).toBe(1);
+    });
+});
+
+describe('POST /auth/register', () => {
+    const validUser = {
+        email: 'test@example.com',
+        password: 'securepassword123'
+    };
+
+    it('should register a new user and return 201', async () => {
+        const res = await request(app).post('/auth/register').send(validUser);
+        expect(res.status).toBe(201);
+        expect(res.body.status).toBe('success');
+        expect(res.body.data.email).toBe(validUser.email);
+        expect(res.body.data.id).toBeDefined();
+        expect(res.body.data.createdAt).toBeDefined();
+    });
+
+    it('should NOT include passwordHash in the response', async () => {
+        const res = await request(app).post('/auth/register').send(validUser);
+        expect(res.status).toBe(201);
+        expect(res.body.data.passwordHash).toBeUndefined();
+        expect(res.body.data.password).toBeUndefined();
+    });
+
+    it('should return 409 Conflict when email is already registered', async () => {
+        await request(app).post('/auth/register').send(validUser);
+        const res = await request(app).post('/auth/register').send(validUser);
+        expect(res.status).toBe(409);
+        expect(res.body.status).toBe('error');
+        expect(res.body.message).toContain(validUser.email);
+    });
+
+    it('should return 400 if email format is invalid', async () => {
+        const res = await request(app)
+            .post('/auth/register')
+            .send({ email: 'not-an-email', password: 'securepassword123' });
+        expect(res.status).toBe(400);
+    });
+
+    it('should return 400 if password is too short (less than 8 characters)', async () => {
+        const res = await request(app)
+            .post('/auth/register')
+            .send({ email: 'short@example.com', password: '123' });
+        expect(res.status).toBe(400);
+    });
+
+    it('should return 400 if email is missing', async () => {
+        const res = await request(app)
+            .post('/auth/register')
+            .send({ password: 'securepassword123' });
+        expect(res.status).toBe(400);
+    });
+
+    it('should return 400 if password is missing', async () => {
+        const res = await request(app)
+            .post('/auth/register')
+            .send({ email: 'test2@example.com' });
+        expect(res.status).toBe(400);
+    });
+
+    it('should store hashed password (not plaintext) in database', async () => {
+        const { User } = require('../src/models/user.model');
+        await request(app).post('/auth/register').send(validUser);
+        const user = await User.findOne({ email: validUser.email });
+        expect(user).not.toBeNull();
+        expect(user.passwordHash).not.toBe(validUser.password);
+        expect(user.passwordHash).toMatch(/^\$2[aby]\$/); // bcrypt hash pattern
+    });
+});
+
+describe('POST /auth/login', () => {
+    const credentials = {
+        email: 'login-test@example.com',
+        password: 'password123'
+    };
+
+    const parseCookies = (res: any): string[] => {
+        const cookiesHeader = res.headers['set-cookie'];
+        if (!cookiesHeader) return [];
+        return Array.isArray(cookiesHeader) ? cookiesHeader : [cookiesHeader];
+    };
+
+    beforeEach(async () => {
+        // Register the user first
+        await request(app).post('/auth/register').send(credentials);
+    });
+
+    it('should login successfully and set access_token and refresh_token cookies', async () => {
+        const res = await request(app)
+            .post('/auth/login')
+            .send(credentials);
+
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('success');
+        expect(res.body.data.email).toBe(credentials.email);
+        expect(res.body.data.id).toBeDefined();
+
+        // Tokens must NOT be in the body
+        expect(res.body.data.accessToken).toBeUndefined();
+        expect(res.body.data.refreshToken).toBeUndefined();
+
+        // Check cookies
+        const cookies = parseCookies(res);
+        expect(cookies.length).toBe(2);
+
+        const hasAccessToken = cookies.some((c: string) => c.startsWith('access_token='));
+        const hasRefreshToken = cookies.some((c: string) => c.startsWith('refresh_token='));
+        expect(hasAccessToken).toBe(true);
+        expect(hasRefreshToken).toBe(true);
+    });
+
+    it('should convert email to lowercase and login successfully', async () => {
+        const res = await request(app)
+            .post('/auth/login')
+            .send({
+                email: 'LOGIN-TEST@EXAMPLE.COM',
+                password: credentials.password
+            });
+
+        expect(res.status).toBe(200);
+    });
+
+    it('should return 401 Unauthorized for incorrect password without details', async () => {
+        const res = await request(app)
+            .post('/auth/login')
+            .send({
+                email: credentials.email,
+                password: 'wrongpassword'
+            });
+
+        expect(res.status).toBe(401);
+        expect(res.body.status).toBe('error');
+        expect(res.body.message).toBe('Unauthorized');
+    });
+
+    it('should return 401 Unauthorized for non-existent email', async () => {
+        const res = await request(app)
+            .post('/auth/login')
+            .send({
+                email: 'nonexistent@example.com',
+                password: credentials.password
+            });
+
+        expect(res.status).toBe(401);
+        expect(res.body.status).toBe('error');
+        expect(res.body.message).toBe('Unauthorized');
+    });
+
+    it('should return 401 if email is missing', async () => {
+        const res = await request(app)
+            .post('/auth/login')
+            .send({
+                password: credentials.password
+            });
+
+        expect(res.status).toBe(401);
+        expect(res.body.status).toBe('error');
+        expect(res.body.message).toBe('Unauthorized');
+    });
+
+    it('should return 401 if password is missing', async () => {
+        const res = await request(app)
+            .post('/auth/login')
+            .send({
+                email: credentials.email
+            });
+
+        expect(res.status).toBe(401);
+        expect(res.body.status).toBe('error');
+        expect(res.body.message).toBe('Unauthorized');
+    });
+});
+
+describe('POST /auth/refresh', () => {
+    const credentials = {
+        email: 'refresh-test@example.com',
+        password: 'password123'
+    };
+
+    const parseCookies = (res: any): string[] => {
+        const cookiesHeader = res.headers['set-cookie'];
+        if (!cookiesHeader) return [];
+        return Array.isArray(cookiesHeader) ? cookiesHeader : [cookiesHeader];
+    };
+
+    let refreshTokenCookie: string;
+
+    beforeEach(async () => {
+        await request(app).post('/auth/register').send(credentials);
+        const loginRes = await request(app).post('/auth/login').send(credentials);
+        const cookies = parseCookies(loginRes);
+        const refreshCookie = cookies.find((c: string) => c.startsWith('refresh_token='));
+        if (refreshCookie) {
+            refreshTokenCookie = refreshCookie.split(';')[0];
+        }
+    });
+
+    it('should refresh tokens successfully using a valid refresh_token cookie', async () => {
+        expect(refreshTokenCookie).toBeDefined();
+
+        const res = await request(app)
+            .post('/auth/refresh')
+            .set('Cookie', [refreshTokenCookie]);
+
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('success');
+
+        const cookies = parseCookies(res);
+        const hasAccessToken = cookies.some((c: string) => c.startsWith('access_token='));
+        const hasRefreshToken = cookies.some((c: string) => c.startsWith('refresh_token='));
+        expect(hasAccessToken).toBe(true);
+        expect(hasRefreshToken).toBe(true);
+    });
+
+    it('should return 401 if refresh_token cookie is missing', async () => {
+        const res = await request(app)
+            .post('/auth/refresh');
+
+        expect(res.status).toBe(401);
+        expect(res.body.status).toBe('error');
+        expect(res.body.message).toBe('Unauthorized');
+    });
+
+    it('should return 401 if refresh_token cookie is invalid', async () => {
+        const res = await request(app)
+            .post('/auth/refresh')
+            .set('Cookie', ['refresh_token=invalid-token-here']);
+
+        expect(res.status).toBe(401);
+        expect(res.body.status).toBe('error');
+        expect(res.body.message).toBe('Unauthorized');
+    });
+});
+
+describe('POST /auth/logout', () => {
+    const parseCookies = (res: any): string[] => {
+        const cookiesHeader = res.headers['set-cookie'];
+        if (!cookiesHeader) return [];
+        return Array.isArray(cookiesHeader) ? cookiesHeader : [cookiesHeader];
+    };
+
+    it('should clear access_token and refresh_token cookies', async () => {
+        const res = await request(app)
+            .post('/auth/logout');
+
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('success');
+        expect(res.body.message).toBe('Logged out');
+
+        const cookies = parseCookies(res);
+        const clearedAccess = cookies.some((c: string) => c.startsWith('access_token=') && (c.includes('Max-Age=0') || c.includes('Expires=') || c.split(';')[0] === 'access_token='));
+        const clearedRefresh = cookies.some((c: string) => c.startsWith('refresh_token=') && (c.includes('Max-Age=0') || c.includes('Expires=') || c.split(';')[0] === 'refresh_token='));
+
+        expect(clearedAccess).toBe(true);
+        expect(clearedRefresh).toBe(true);
     });
 });
 

@@ -11,7 +11,10 @@ export const errorHandler = (
         res.status(400).json({
             status: 'error',
             message: 'Validation error',
-            errors: err.issues
+            errors: err.issues.map((issue) => ({
+                path: issue.path.join('.'),
+                message: issue.message
+            }))
         });
         return;
     }
