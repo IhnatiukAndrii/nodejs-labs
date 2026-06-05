@@ -16,7 +16,11 @@ export async function raceWithTimeout<T>(
         console.log('[raceWithTimeout] Success: operation completed before timeout');
         return result;
     } catch (error) {
-        console.error('[raceWithTimeout] Error/Timeout:', error);
+        if (error instanceof Error && error.message.includes('Operation timed out')) {
+            console.log(`[raceWithTimeout] Timeout: ${error.message}`);
+        } else {
+            console.error('[raceWithTimeout] Error:', error);
+        }
         throw error;
     } finally {
         if (timer) {
