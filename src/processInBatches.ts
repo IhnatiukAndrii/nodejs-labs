@@ -1,10 +1,10 @@
-export async function processInBatches<T, U>(
+export async function processInBatches<T, R>(
     items: T[],
     batchSize: number,
-    processor: (batch: T[]) => Promise<U[]>
-): Promise<U[]> {
+    processor: (batch: T[]) => Promise<R[]>
+): Promise<R[]> {
     try {
-        const results: U[] = [];
+        const results: R[] = [];
         const total = Math.ceil(items.length / batchSize);
 
         for (let i = 0; i < items.length; i += batchSize) {
