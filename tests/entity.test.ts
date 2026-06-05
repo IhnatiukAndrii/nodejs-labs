@@ -2,25 +2,21 @@ import request from 'supertest';
 import app from '../src/app';
 import { entityStorage } from '../src/storage/entity';
 import { WishlistItem } from '../src/models/entity.model';
-import { connectDB } from '../src/config/database';
-import mongoose from 'mongoose';
-import dotenv from 'dotenv';
-
-// Load environment variables for testing
-dotenv.config();
+import { connect, closeDatabase, clearDatabase } from './setup';
 
 beforeAll(async () => {
-    await connectDB();
+    await connect();
 });
 
 afterAll(async () => {
-    await mongoose.connection.close();
+    await closeDatabase();
+});
+
+afterEach(async () => {
+    await clearDatabase();
 });
 
 describe('Wishlist API Integration Tests', () => {
-    beforeEach(async () => {
-        await WishlistItem.deleteMany({});
-    });
 
     const validItem = {
         name: 'PlayStation 5',
@@ -236,3 +232,87 @@ describe('Wishlist API Integration Tests', () => {
         expect(res.body.some((item: any) => item.name === 'Expensive 2')).toBe(true);
     });
 });
+
+describe('WishlistItem Model Unit Tests', () => {
+    const validData = {
+        name: 'Nintendo Switch',
+        description: 'Hybrid console',
+        price: 299.99,
+        priority: 'medium' as const,
+        url: 'https://nintendo.com/switch'
+    };
+
+    it('should create a valid model with all fields', async () => {
+        const item = new WishlistItem(validData);
+        await item.validate();
+        expect(item.name).toBe(validData.name);
+        expect(item.description).toBe(validData.description);
+        expect(item.price).toBe(validData.price);
+        expect(item.priority).toBe(validData.priority);
+        expect(item.url).toBe(validData.url);
+    });
+
+    it('should set default priority to medium if not provided', async () => {
+        const item = new WishlistItem({
+            name: 'Book',
+            price: 15.99
+        });
+        expect(item.priority).toBe('medium');
+    });
+
+    it('should fail validation if name is empty', async () => {
+        const item = new WishlistItem({ ...validData, name: '' });
+        await expect(item.validate()).rejects.toThrow();
+    });
+
+    it('should fail validation if name is longer than 100 characters', async () => {
+        const item = new WishlistItem({ ...validData, name: 'a'.repeat(101) });
+        await expect(item.validate()).rejects.toThrow();
+    });
+
+    it('should fail validation if description is longer than 500 characters', async () => {
+        const item = new WishlistItem({ ...validData, description: 'a'.repeat(501) });
+        await expect(item.validate()).rejects.toThrow();
+    });
+
+    it('should fail validation if price is less than 0.01', async () => {
+        const item = new WishlistItem({ ...validData, price: 0 });
+        await expect(item.validate()).rejects.toThrow();
+    });
+
+    it('should fail validation if priority is invalid', async () => {
+        const item = new WishlistItem({ ...validData, priority: 'critical' as any });
+        await expect(item.validate()).rejects.toThrow();
+    });
+
+    it('should fail validation if URL format is invalid', async () => {
+        const item = new WishlistItem({ ...validData, url: 'invalid-url' });
+        await expect(item.validate()).rejects.toThrow();
+    });
+
+    it('should successfully validate empty URL (optional field)', async () => {
+        const item = new WishlistItem({
+            name: 'Self-improvement book',
+            price: 19.99
+        });
+        await expect(item.validate()).resolves.not.toThrow();
+    });
+
+    it('should check virtual isExpensive property (true if price > 100)', async () => {
+        const expensiveItem = new WishlistItem({ ...validData, price: 100.01 }) as any;
+        expect(expensiveItem.isExpensive).toBe(true);
+
+        const cheapItem = new WishlistItem({ ...validData, price: 100.00 }) as any;
+        expect(cheapItem.isExpensive).toBe(false);
+    });
+
+    it('should automatically set createdAt and updatedAt timestamps upon save', async () => {
+        const item = new WishlistItem(validData);
+        const saved = await item.save() as any;
+        expect(saved.createdAt).toBeDefined();
+        expect(saved.updatedAt).toBeDefined();
+        expect(saved.createdAt).toBeInstanceOf(Date);
+        expect(saved.updatedAt).toBeInstanceOf(Date);
+    });
+});
+
