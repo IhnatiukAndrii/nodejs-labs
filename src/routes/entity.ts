@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { entityStorage } from '../storage/entity';
 import { createSchema, updateSchema, EntityFilters } from '../schemas/entity.schema';
-import { validate } from '../middleware';
+import { validate, requireAuth } from '../middleware';
 
 const router = Router();
 
@@ -57,35 +57,47 @@ router.get('/:id', async (req, res, next) => {
     }
 });
 
-router.post('/', validate(createSchema), async (req, res, next) => {
+// State-changing routes (POST, PUT, DELETE) are protected by requireAuth.
+
+router.post('/', requireAuth, validate(createSchema), async (req, res, next) => {
     try {
-        const newItem = await entityStorage.create(req.body);
+        const newItem = await entityStorage.create({ ...req.body, ownerId: req.userId });
         res.status(201).json(newItem);
     } catch (error) {
         next(error);
     }
 });
 
-router.put('/:id', validate(updateSchema), async (req, res, next) => {
+router.put('/:id', requireAuth, validate(updateSchema), async (req, res, next) => {
     try {
-        const updated = await entityStorage.update(req.params.id as string, req.body);
-        if (!updated) {
+        const item = await entityStorage.findById(req.params.id as string);
+        if (!item) {
             res.status(404).json({ error: 'Item not found' });
             return;
         }
+        if (!item.ownerId || item.ownerId.toString() !== req.userId) {
+            res.status(403).json({ status: 'error', message: 'Forbidden' });
+            return;
+        }
+        const updated = await entityStorage.update(req.params.id as string, req.body);
         res.status(200).json(updated);
     } catch (error) {
         next(error);
     }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireAuth, async (req, res, next) => {
     try {
-        const success = await entityStorage.delete(req.params.id as string);
-        if (!success) {
+        const item = await entityStorage.findById(req.params.id as string);
+        if (!item) {
             res.status(404).json({ error: 'Item not found' });
             return;
         }
+        if (!item.ownerId || item.ownerId.toString() !== req.userId) {
+            res.status(403).json({ status: 'error', message: 'Forbidden' });
+            return;
+        }
+        await entityStorage.delete(req.params.id as string);
         res.status(204).end();
     } catch (error) {
         next(error);

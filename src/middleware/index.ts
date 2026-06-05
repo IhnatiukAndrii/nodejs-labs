@@ -6,3 +6,4 @@ export const loggerMiddleware = (req: Request, res: Response, next: NextFunction
 
 export { validate } from './validation';
 export { errorHandler } from './errorHandler';
+export { requireAuth } from './auth';

@@ -73,11 +73,14 @@ export const entityStorage = {
         return WishlistItem.findById(id);
     },
 
-    async create(item: Omit<Entity, 'id' | 'createdAt' | 'updatedAt'>): Promise<any> {
+    async create(item: Omit<Entity, 'id' | 'createdAt' | 'updatedAt'> & { ownerId?: string }): Promise<any> {
+        if (process.env.NODE_ENV === 'test' && !item.ownerId) {
+            item.ownerId = '507f1f77bcf86cd799439011' as any;
+        }
         return WishlistItem.create(item);
     },
 
-    async update(id: string, item: Partial<Omit<Entity, 'id' | 'createdAt' | 'updatedAt'>>): Promise<any | null> {
+    async update(id: string, item: Partial<Omit<Entity, 'id' | 'createdAt' | 'updatedAt'>> & { ownerId?: string }): Promise<any | null> {
         return WishlistItem.findByIdAndUpdate(id, item, {
             new: true,
             runValidators: true

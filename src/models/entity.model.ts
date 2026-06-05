@@ -6,6 +6,7 @@ export interface IWishlistItem {
     price: number;
     priority: 'low' | 'medium' | 'high';
     url?: string;
+    ownerId?: mongoose.Types.ObjectId;
 }
 
 const wishlistSchema = new Schema<IWishlistItem>(
@@ -50,6 +51,10 @@ const wishlistSchema = new Schema<IWishlistItem>(
                 },
                 message: (props: any) => `${props.value} is not a valid URL!`
             }
+        },
+        ownerId: {
+            type: Schema.Types.ObjectId,
+            ref: 'User'
         }
     },
     {

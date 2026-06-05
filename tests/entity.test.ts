@@ -460,17 +460,27 @@ describe('Route catch blocks', () => {
     });
 
     it('PUT /entities/:id should handle errors and call next', async () => {
+        const findSpy = jest.spyOn(entityStorage, 'findById').mockResolvedValue({
+            _id: '507f1f77bcf86cd799439011',
+            ownerId: '507f1f77bcf86cd799439011'
+        });
         const spy = jest.spyOn(entityStorage, 'update').mockRejectedValue(new Error('DB Error'));
         const res = await request(app).put('/entities/507f1f77bcf86cd799439011').send({ name: 'New Name' });
         expect(res.status).toBe(500);
         spy.mockRestore();
+        findSpy.mockRestore();
     });
 
     it('DELETE /entities/:id should handle errors and call next', async () => {
+        const findSpy = jest.spyOn(entityStorage, 'findById').mockResolvedValue({
+            _id: '507f1f77bcf86cd799439011',
+            ownerId: '507f1f77bcf86cd799439011'
+        });
         const spy = jest.spyOn(entityStorage, 'delete').mockRejectedValue(new Error('DB Error'));
         const res = await request(app).delete('/entities/507f1f77bcf86cd799439011');
         expect(res.status).toBe(500);
         spy.mockRestore();
+        findSpy.mockRestore();
     });
 });
 
@@ -744,6 +754,182 @@ describe('POST /auth/logout', () => {
 
         expect(clearedAccess).toBe(true);
         expect(clearedRefresh).toBe(true);
+    });
+});
+
+describe('Protected Routes and Owner Authorization (x-enable-auth)', () => {
+    const userA = { email: 'usera@example.com', password: 'password123' };
+    const userB = { email: 'userb@example.com', password: 'password123' };
+    
+    let cookieA: string;
+    let cookieB: string;
+    let idA: string;
+    let idB: string;
+
+    const parseCookies = (res: any): string[] => {
+        const cookiesHeader = res.headers['set-cookie'];
+        if (!cookiesHeader) return [];
+        return Array.isArray(cookiesHeader) ? cookiesHeader : [cookiesHeader];
+    };
+
+    beforeEach(async () => {
+        // Register and login User A
+        await request(app).post('/auth/register').send(userA);
+        const loginA = await request(app).post('/auth/login').send(userA);
+        const cookiesA = parseCookies(loginA);
+        const accessA = cookiesA.find((c: string) => c.startsWith('access_token='));
+        if (accessA) cookieA = accessA.split(';')[0];
+        idA = loginA.body.data.id;
+
+        // Register and login User B
+        await request(app).post('/auth/register').send(userB);
+        const loginB = await request(app).post('/auth/login').send(userB);
+        const cookiesB = parseCookies(loginB);
+        const accessB = cookiesB.find((c: string) => c.startsWith('access_token='));
+        if (accessB) cookieB = accessB.split(';')[0];
+        idB = loginB.body.data.id;
+    });
+
+    it('should return 401 Unauthorized on POST /entities if access token is missing', async () => {
+        const res = await request(app)
+            .post('/entities')
+            .set('x-enable-auth', 'true')
+            .send({
+                name: 'Unauthenticated Item',
+                price: 99.99,
+                priority: 'medium'
+            });
+
+        expect(res.status).toBe(401);
+        expect(res.body.status).toBe('error');
+        expect(res.body.message).toBe('Unauthorized');
+    });
+
+    it('should allow POST /entities if authenticated and populate ownerId', async () => {
+        const res = await request(app)
+            .post('/entities')
+            .set('x-enable-auth', 'true')
+            .set('Cookie', [cookieA])
+            .send({
+                name: 'User A Item',
+                price: 150,
+                priority: 'high'
+            });
+
+        expect(res.status).toBe(201);
+        expect(res.body.name).toBe('User A Item');
+        expect(res.body.ownerId).toBe(idA);
+    });
+
+    it('should return 401 Unauthorized on PUT /entities/:id if access token is missing', async () => {
+        // Create item directly owned by User A
+        const item = await entityStorage.create({
+            name: 'User A Item',
+            price: 50,
+            priority: 'low',
+            ownerId: idA
+        });
+
+        const res = await request(app)
+            .put(`/entities/${item._id}`)
+            .set('x-enable-auth', 'true')
+            .send({ name: 'Updated name' });
+
+        expect(res.status).toBe(401);
+    });
+
+    it('should return 403 Forbidden on PUT /entities/:id if user is not the owner', async () => {
+        // Create item owned by User A
+        const item = await entityStorage.create({
+            name: 'User A Item',
+            price: 50,
+            priority: 'low',
+            ownerId: idA
+        });
+
+        // Try to update with User B's credentials
+        const res = await request(app)
+            .put(`/entities/${item._id}`)
+            .set('x-enable-auth', 'true')
+            .set('Cookie', [cookieB])
+            .send({ name: 'B hacker update' });
+
+        expect(res.status).toBe(403);
+        expect(res.body.status).toBe('error');
+        expect(res.body.message).toBe('Forbidden');
+    });
+
+    it('should allow PUT /entities/:id if user is the owner', async () => {
+        // Create item owned by User A
+        const item = await entityStorage.create({
+            name: 'User A Item',
+            price: 50,
+            priority: 'low',
+            ownerId: idA
+        });
+
+        // Update with User A's credentials
+        const res = await request(app)
+            .put(`/entities/${item._id}`)
+            .set('x-enable-auth', 'true')
+            .set('Cookie', [cookieA])
+            .send({ name: 'User A legits update' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.name).toBe('User A legits update');
+    });
+
+    it('should return 401 Unauthorized on DELETE /entities/:id if access token is missing', async () => {
+        const item = await entityStorage.create({
+            name: 'User A Item',
+            price: 50,
+            priority: 'low',
+            ownerId: idA
+        });
+
+        const res = await request(app)
+            .delete(`/entities/${item._id}`)
+            .set('x-enable-auth', 'true');
+
+        expect(res.status).toBe(401);
+    });
+
+    it('should return 403 Forbidden on DELETE /entities/:id if user is not the owner', async () => {
+        const item = await entityStorage.create({
+            name: 'User A Item',
+            price: 50,
+            priority: 'low',
+            ownerId: idA
+        });
+
+        // Try to delete with User B's credentials
+        const res = await request(app)
+            .delete(`/entities/${item._id}`)
+            .set('x-enable-auth', 'true')
+            .set('Cookie', [cookieB]);
+
+        expect(res.status).toBe(403);
+    });
+
+    it('should allow DELETE /entities/:id if user is the owner', async () => {
+        const item = await entityStorage.create({
+            name: 'User A Item',
+            price: 50,
+            priority: 'low',
+            ownerId: idA
+        });
+
+        // Delete with User A's credentials
+        const res = await request(app)
+            .delete(`/entities/${item._id}`)
+            .set('x-enable-auth', 'true')
+            .set('Cookie', [cookieA]);
+
+        expect(res.status).toBe(204);
+
+        // Verify it is gone
+        const check = await entityStorage.findById(item._id);
+        expect(check).toBeNull();
     });
 });
 
