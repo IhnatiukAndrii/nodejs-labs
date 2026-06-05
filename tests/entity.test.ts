@@ -3,6 +3,7 @@ import app from '../src/app';
 import { entityStorage } from '../src/storage/entity';
 import { WishlistItem } from '../src/models/entity.model';
 import { connect, closeDatabase, clearDatabase } from './setup';
+import { errorHandler } from '../src/middleware';
 
 beforeAll(async () => {
     await connect();
@@ -313,6 +314,138 @@ describe('WishlistItem Model Unit Tests', () => {
         expect(saved.updatedAt).toBeDefined();
         expect(saved.createdAt).toBeInstanceOf(Date);
         expect(saved.updatedAt).toBeInstanceOf(Date);
+    });
+
+    it('should validate empty/blank URL properly', async () => {
+        const item = new WishlistItem({
+            name: 'Item with empty string url',
+            price: 15.00,
+            url: ''
+        });
+        await expect(item.validate()).resolves.not.toThrow();
+    });
+});
+
+describe('errorHandler middleware unit tests', () => {
+    let mockRequest: any;
+    let mockResponse: any;
+    let mockNext: any;
+
+    beforeEach(() => {
+        mockRequest = {};
+        mockResponse = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn().mockReturnThis()
+        };
+        mockNext = jest.fn();
+    });
+
+    it('should handle Mongoose ValidationError', () => {
+        const err = {
+            name: 'ValidationError',
+            errors: {
+                name: { path: 'name', message: 'Name is required' }
+            }
+        };
+        errorHandler(err, mockRequest, mockResponse, mockNext);
+        expect(mockResponse.status).toHaveBeenCalledWith(400);
+        expect(mockResponse.json).toHaveBeenCalledWith({
+            status: 'error',
+            message: 'Validation error',
+            errors: [{ path: 'name', message: 'Name is required' }]
+        });
+    });
+
+    it('should handle duplicate key error (11000)', () => {
+        const err = {
+            code: 11000,
+            keyValue: { name: 'PlayStation 5' }
+        };
+        errorHandler(err, mockRequest, mockResponse, mockNext);
+        expect(mockResponse.status).toHaveBeenCalledWith(400);
+        expect(mockResponse.json).toHaveBeenCalledWith({
+            status: 'error',
+            message: 'Duplicate key error',
+            keyValue: { name: 'PlayStation 5' }
+        });
+    });
+
+    it('should handle fallback 500 error', () => {
+        const err = new Error('Test unhandled error');
+        errorHandler(err, mockRequest, mockResponse, mockNext);
+        expect(mockResponse.status).toHaveBeenCalledWith(500);
+        expect(mockResponse.json).toHaveBeenCalledWith({
+            status: 'error',
+            message: 'Test unhandled error'
+        });
+    });
+});
+
+describe('Route catch blocks', () => {
+    it('GET /entities should handle errors and call next', async () => {
+        const spy = jest.spyOn(entityStorage, 'findAll').mockRejectedValue(new Error('DB Error'));
+        const res = await request(app).get('/entities');
+        expect(res.status).toBe(500);
+        expect(res.body.message).toBe('DB Error');
+        spy.mockRestore();
+    });
+
+    it('GET /entities/expensive should handle errors and call next', async () => {
+        const spy = jest.spyOn(entityStorage, 'findExpensive').mockRejectedValue(new Error('DB Error'));
+        const res = await request(app).get('/entities/expensive');
+        expect(res.status).toBe(500);
+        expect(res.body.message).toBe('DB Error');
+        spy.mockRestore();
+    });
+
+    it('GET /entities/:id should handle errors and call next', async () => {
+        const spy = jest.spyOn(entityStorage, 'findById').mockRejectedValue(new Error('DB Error'));
+        const res = await request(app).get('/entities/507f1f77bcf86cd799439011');
+        expect(res.status).toBe(500);
+        expect(res.body.message).toBe('DB Error');
+        spy.mockRestore();
+    });
+
+    it('POST /entities should handle errors and call next', async () => {
+        const spy = jest.spyOn(entityStorage, 'create').mockRejectedValue(new Error('DB Error'));
+        const res = await request(app).post('/entities').send({
+            name: 'Test item',
+            price: 10,
+            priority: 'medium'
+        });
+        expect(res.status).toBe(500);
+        spy.mockRestore();
+    });
+
+    it('PUT /entities/:id should handle errors and call next', async () => {
+        const spy = jest.spyOn(entityStorage, 'update').mockRejectedValue(new Error('DB Error'));
+        const res = await request(app).put('/entities/507f1f77bcf86cd799439011').send({ name: 'New Name' });
+        expect(res.status).toBe(500);
+        spy.mockRestore();
+    });
+
+    it('DELETE /entities/:id should handle errors and call next', async () => {
+        const spy = jest.spyOn(entityStorage, 'delete').mockRejectedValue(new Error('DB Error'));
+        const res = await request(app).delete('/entities/507f1f77bcf86cd799439011');
+        expect(res.status).toBe(500);
+        spy.mockRestore();
+    });
+});
+
+describe('Storage edge cases', () => {
+    it('findAll should work without any options', async () => {
+        const result = await entityStorage.findAll();
+        expect(result.data).toEqual([]);
+    });
+
+    it('findAll with invalid sort field should use default sort', async () => {
+        await entityStorage.create({
+            name: 'Item A',
+            price: 10,
+            priority: 'medium'
+        });
+        const result = await entityStorage.findAll({ sort: 'invalidField' });
+        expect(result.data.length).toBe(1);
     });
 });
 
