@@ -6,19 +6,17 @@ import mongoose from 'mongoose';
 
 const app = express();
 
-app.get('/health', (req, res) => {
-    const dbConnected = mongoose.connection.readyState === 1;
+export const healthCheck = (readyState: number, res: any) => {
+    const dbConnected = readyState === 1;
     if (dbConnected) {
-        res.status(200).json({
-            status: 'UP',
-            db: 'connected'
-        });
+        res.status(200).json({ status: 'UP', db: 'connected' });
     } else {
-        res.status(503).json({
-            status: 'DOWN',
-            db: 'disconnected'
-        });
+        res.status(503).json({ status: 'DOWN', db: 'disconnected' });
     }
+};
+
+app.get('/health', (req, res) => {
+    healthCheck(mongoose.connection.readyState, res);
 });
 
 app.use(cors());

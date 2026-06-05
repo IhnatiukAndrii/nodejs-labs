@@ -17,6 +17,26 @@ afterEach(async () => {
     await clearDatabase();
 });
 
+describe('GET /health', () => {
+    it('should return 200 and status UP when MongoDB is connected', async () => {
+        const res = await request(app).get('/health');
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('UP');
+        expect(res.body.db).toBe('connected');
+    });
+
+    it('should return 503 and status DOWN when MongoDB is disconnected', () => {
+        const { healthCheck } = require('../src/app');
+        const mockRes = {
+            status: jest.fn().mockReturnThis(),
+            json: jest.fn().mockReturnThis()
+        };
+        healthCheck(0, mockRes); // readyState 0 = disconnected
+        expect(mockRes.status).toHaveBeenCalledWith(503);
+        expect(mockRes.json).toHaveBeenCalledWith({ status: 'DOWN', db: 'disconnected' });
+    });
+});
+
 describe('Wishlist API Integration Tests', () => {
 
     const validItem = {
