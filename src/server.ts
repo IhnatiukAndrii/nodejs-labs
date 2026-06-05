@@ -36,5 +36,3 @@ const startServer = async () => {
 };
 
 startServer();
-nodejs - sparkling - sound - 3961.fly.dev
-nodejs - sparkling - sound - 3961.fly.dev / register
