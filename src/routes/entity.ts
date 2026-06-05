@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { entityStorage } from '../storage/entity';
 import { createSchema, updateSchema } from '../schemas/entity.schema';
-import { validate, errorHandler } from '../middleware';
+import { validate } from '../middleware';
 
 const router = Router();
 
@@ -11,7 +11,7 @@ router.get('/', (req, res) => {
 
 router.get('/:id', (req, res, next) => {
     try {
-        const item = entityStorage.findById(req.params.id);
+        const item = entityStorage.findById(req.params.id as string);
         if (!item) {
             res.status(404).json({ error: 'Item not found' });
             return;
@@ -46,7 +46,7 @@ router.put('/:id', validate(updateSchema), (req, res, next) => {
 
 router.delete('/:id', (req, res, next) => {
     try {
-        const success = entityStorage.delete(req.params.id);
+        const success = entityStorage.delete(req.params.id as string);
         if (!success) {
             res.status(404).json({ error: 'Item not found' });
             return;
@@ -56,7 +56,5 @@ router.delete('/:id', (req, res, next) => {
         next(error);
     }
 });
-
-router.use(errorHandler);
 
 export default router;
