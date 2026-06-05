@@ -7,7 +7,7 @@ const router = Router();
 
 router.get('/', async (req, res, next) => {
     try {
-        const { priority, maxPrice, name } = req.query;
+        const { priority, maxPrice, name, sort, page, limit } = req.query;
         const filters: EntityFilters = {};
         if (typeof priority === 'string' && ['low', 'medium', 'high'].includes(priority)) {
             filters.priority = priority as 'low' | 'medium' | 'high';
@@ -18,7 +18,26 @@ router.get('/', async (req, res, next) => {
         if (typeof name === 'string') {
             filters.name = name;
         }
-        const items = await entityStorage.findAll(filters);
+
+        const sortStr = typeof sort === 'string' ? sort : undefined;
+        const pageNum = typeof page === 'string' && !isNaN(Number(page)) ? Math.max(1, parseInt(page, 10)) : undefined;
+        const limitNum = typeof limit === 'string' && !isNaN(Number(limit)) ? Math.max(1, parseInt(limit, 10)) : undefined;
+
+        const result = await entityStorage.findAll({
+            filters,
+            sort: sortStr,
+            page: pageNum,
+            limit: limitNum
+        });
+        res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+});
+
+router.get('/expensive', async (req, res, next) => {
+    try {
+        const items = await entityStorage.findExpensive();
         res.status(200).json(items);
     } catch (error) {
         next(error);

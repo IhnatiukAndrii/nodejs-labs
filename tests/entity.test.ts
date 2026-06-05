@@ -33,7 +33,9 @@ describe('Wishlist API Integration Tests', () => {
     it('GET /entities should return an empty array initially', async () => {
         const res = await request(app).get('/entities');
         expect(res.status).toBe(200);
-        expect(res.body).toEqual([]);
+        expect(res.body.data).toEqual([]);
+        expect(res.body.pagination).toBeDefined();
+        expect(res.body.pagination.total).toBe(0);
     });
 
     it('GET /entities/:id should return 400 for invalid ID format', async () => {
@@ -150,8 +152,8 @@ describe('Wishlist API Integration Tests', () => {
 
         const res = await request(app).get('/entities?priority=high');
         expect(res.status).toBe(200);
-        expect(res.body.length).toBe(2);
-        expect(res.body.every((item: any) => item.priority === 'high')).toBe(true);
+        expect(res.body.data.length).toBe(2);
+        expect(res.body.data.every((item: any) => item.priority === 'high')).toBe(true);
     });
 
     it('GET /entities?maxPrice=100 should return only items with price <= 100', async () => {
@@ -161,8 +163,8 @@ describe('Wishlist API Integration Tests', () => {
 
         const res = await request(app).get('/entities?maxPrice=100');
         expect(res.status).toBe(200);
-        expect(res.body.length).toBe(2);
-        expect(res.body.every((item: any) => item.price <= 100)).toBe(true);
+        expect(res.body.data.length).toBe(2);
+        expect(res.body.data.every((item: any) => item.price <= 100)).toBe(true);
     });
 
     it('GET /entities?name=Play should return only items with matching names (case-insensitive)', async () => {
@@ -172,8 +174,8 @@ describe('Wishlist API Integration Tests', () => {
 
         const res = await request(app).get('/entities?name=play');
         expect(res.status).toBe(200);
-        expect(res.body.length).toBe(1);
-        expect(res.body[0].name).toBe('PlayStation 5');
+        expect(res.body.data.length).toBe(1);
+        expect(res.body.data[0].name).toBe('PlayStation 5');
     });
 
     it('GET /entities with multiple filters should return only matching items', async () => {
@@ -183,7 +185,54 @@ describe('Wishlist API Integration Tests', () => {
 
         const res = await request(app).get('/entities?priority=low&maxPrice=100');
         expect(res.status).toBe(200);
-        expect(res.body.length).toBe(1);
-        expect(res.body[0].name).toBe('Low Cheap');
+        expect(res.body.data.length).toBe(1);
+        expect(res.body.data[0].name).toBe('Low Cheap');
+    });
+
+    it('GET /entities pagination should return paginated list of items', async () => {
+        for (let i = 1; i <= 15; i++) {
+            await entityStorage.create({ ...validItem, name: `Item ${i}`, price: i * 10 });
+        }
+
+        const res = await request(app).get('/entities?page=2&limit=5');
+        expect(res.status).toBe(200);
+        expect(res.body.data.length).toBe(5);
+        expect(res.body.pagination.page).toBe(2);
+        expect(res.body.pagination.limit).toBe(5);
+        expect(res.body.pagination.total).toBe(15);
+        expect(res.body.pagination.pages).toBe(3);
+    });
+
+    it('GET /entities sort should return sorted list of items', async () => {
+        await entityStorage.create({ ...validItem, name: 'Item A', price: 300 });
+        await entityStorage.create({ ...validItem, name: 'Item B', price: 100 });
+        await entityStorage.create({ ...validItem, name: 'Item C', price: 200 });
+
+        // Sort ascending by price
+        const resAsc = await request(app).get('/entities?sort=price');
+        expect(resAsc.status).toBe(200);
+        expect(resAsc.body.data[0].price).toBe(100);
+        expect(resAsc.body.data[1].price).toBe(200);
+        expect(resAsc.body.data[2].price).toBe(300);
+
+        // Sort descending by price
+        const resDesc = await request(app).get('/entities?sort=-price');
+        expect(resDesc.status).toBe(200);
+        expect(resDesc.body.data[0].price).toBe(300);
+        expect(resDesc.body.data[1].price).toBe(200);
+        expect(resDesc.body.data[2].price).toBe(100);
+    });
+
+    it('GET /entities/expensive should return items with price > 100', async () => {
+        await entityStorage.create({ ...validItem, name: 'Cheap', price: 50 });
+        await entityStorage.create({ ...validItem, name: 'Threshold', price: 100 });
+        await entityStorage.create({ ...validItem, name: 'Expensive 1', price: 150 });
+        await entityStorage.create({ ...validItem, name: 'Expensive 2', price: 300 });
+
+        const res = await request(app).get('/entities/expensive');
+        expect(res.status).toBe(200);
+        expect(res.body.length).toBe(2);
+        expect(res.body.some((item: any) => item.name === 'Expensive 1')).toBe(true);
+        expect(res.body.some((item: any) => item.name === 'Expensive 2')).toBe(true);
     });
 });
