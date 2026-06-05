@@ -1,10 +1,10 @@
 export async function delay(ms: number): Promise<void> {
+    if (ms < 0) {
+        throw new Error("Delay duration cannot be negative");
+    }
+
     try {
         console.log(`[delay] Start: waiting for ${ms}ms`);
-
-        if (ms < 0) {
-            throw new Error("Delay duration cannot be negative");
-        }
 
         await new Promise<void>((resolve) => {
             setTimeout(resolve, ms);
