@@ -2,12 +2,19 @@ services:
   mongo:
     image: mongo:8
     container_name: wishlist-db
+    command: mongod --quiet
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: secretpassword
-      MONGO_INITDB_DATABASE: wishlist
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME}
     volumes:
       - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   app:
     build: .
@@ -15,11 +22,18 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 3000
-      MONGODB_URI: mongodb://admin:secretpassword@mongo:27017/wishlist?authSource=admin
+      MONGODB_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB_NAME}?authSource=admin
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
 volumes:
   mongo-data:
