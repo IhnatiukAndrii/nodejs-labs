@@ -1,7 +1,7 @@
-export async function raceWithTimeout(
-    promise: Promise<unknown>,
+export async function raceWithTimeout<T>(
+    promise: Promise<T>,
     timeoutMs: number
-): Promise<unknown> {
+): Promise<T> {
     let timer: NodeJS.Timeout | undefined;
     try {
         console.log(`[raceWithTimeout] Start: setting timeout limit of ${timeoutMs}ms`);
