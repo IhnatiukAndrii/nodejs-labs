@@ -1,10 +1,25 @@
 import request from 'supertest';
 import app from '../src/app';
 import { entityStorage } from '../src/storage/entity';
+import { WishlistItem } from '../src/models/entity.model';
+import { connectDB } from '../src/config/database';
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+
+// Load environment variables for testing
+dotenv.config();
+
+beforeAll(async () => {
+    await connectDB();
+});
+
+afterAll(async () => {
+    await mongoose.connection.close();
+});
 
 describe('Wishlist API Integration Tests', () => {
-    beforeEach(() => {
-        entityStorage.reset();
+    beforeEach(async () => {
+        await WishlistItem.deleteMany({});
     });
 
     const validItem = {
@@ -76,7 +91,7 @@ describe('Wishlist API Integration Tests', () => {
     });
 
     it('GET /entities/:id should return the item if it exists', async () => {
-        const created = entityStorage.create(validItem);
+        const created = await entityStorage.create(validItem);
         const res = await request(app).get(`/entities/${created.id}`);
         expect(res.status).toBe(200);
         expect(res.body.id).toBe(created.id);
@@ -84,7 +99,7 @@ describe('Wishlist API Integration Tests', () => {
     });
 
     it('PUT /entities/:id should update wishlist item and return 200', async () => {
-        const created = entityStorage.create(validItem);
+        const created = await entityStorage.create(validItem);
         const updateData = { name: 'PlayStation 5 Slim', price: 449.99 };
         const res = await request(app).put(`/entities/${created.id}`).send(updateData);
         expect(res.status).toBe(200);
@@ -100,7 +115,7 @@ describe('Wishlist API Integration Tests', () => {
     });
 
     it('DELETE /entities/:id should delete item and return 204', async () => {
-        const created = entityStorage.create(validItem);
+        const created = await entityStorage.create(validItem);
         const delRes = await request(app).delete(`/entities/${created.id}`);
         expect(delRes.status).toBe(204);
 
@@ -114,9 +129,9 @@ describe('Wishlist API Integration Tests', () => {
     });
 
     it('GET /entities?priority=high should return only high-priority items', async () => {
-        entityStorage.create({ ...validItem, name: 'Item 1', priority: 'high' });
-        entityStorage.create({ ...validItem, name: 'Item 2', priority: 'low' });
-        entityStorage.create({ ...validItem, name: 'Item 3', priority: 'high' });
+        await entityStorage.create({ ...validItem, name: 'Item 1', priority: 'high' });
+        await entityStorage.create({ ...validItem, name: 'Item 2', priority: 'low' });
+        await entityStorage.create({ ...validItem, name: 'Item 3', priority: 'high' });
 
         const res = await request(app).get('/entities?priority=high');
         expect(res.status).toBe(200);
@@ -125,9 +140,9 @@ describe('Wishlist API Integration Tests', () => {
     });
 
     it('GET /entities?maxPrice=100 should return only items with price <= 100', async () => {
-        entityStorage.create({ ...validItem, name: 'Cheap 1', price: 50 });
-        entityStorage.create({ ...validItem, name: 'Expensive', price: 150 });
-        entityStorage.create({ ...validItem, name: 'Cheap 2', price: 100 });
+        await entityStorage.create({ ...validItem, name: 'Cheap 1', price: 50 });
+        await entityStorage.create({ ...validItem, name: 'Expensive', price: 150 });
+        await entityStorage.create({ ...validItem, name: 'Cheap 2', price: 100 });
 
         const res = await request(app).get('/entities?maxPrice=100');
         expect(res.status).toBe(200);
@@ -136,9 +151,9 @@ describe('Wishlist API Integration Tests', () => {
     });
 
     it('GET /entities?name=Play should return only items with matching names (case-insensitive)', async () => {
-        entityStorage.create({ ...validItem, name: 'PlayStation 5' });
-        entityStorage.create({ ...validItem, name: 'Xbox Series X' });
-        entityStorage.create({ ...validItem, name: 'Nintendo Switch' });
+        await entityStorage.create({ ...validItem, name: 'PlayStation 5' });
+        await entityStorage.create({ ...validItem, name: 'Xbox Series X' });
+        await entityStorage.create({ ...validItem, name: 'Nintendo Switch' });
 
         const res = await request(app).get('/entities?name=play');
         expect(res.status).toBe(200);
@@ -147,9 +162,9 @@ describe('Wishlist API Integration Tests', () => {
     });
 
     it('GET /entities with multiple filters should return only matching items', async () => {
-        entityStorage.create({ ...validItem, name: 'Low Cheap', priority: 'low', price: 50 });
-        entityStorage.create({ ...validItem, name: 'Low Expensive', priority: 'low', price: 150 });
-        entityStorage.create({ ...validItem, name: 'High Cheap', priority: 'high', price: 50 });
+        await entityStorage.create({ ...validItem, name: 'Low Cheap', priority: 'low', price: 50 });
+        await entityStorage.create({ ...validItem, name: 'Low Expensive', priority: 'low', price: 150 });
+        await entityStorage.create({ ...validItem, name: 'High Cheap', priority: 'high', price: 50 });
 
         const res = await request(app).get('/entities?priority=low&maxPrice=100');
         expect(res.status).toBe(200);

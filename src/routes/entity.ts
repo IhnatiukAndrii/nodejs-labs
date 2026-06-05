@@ -5,24 +5,29 @@ import { validate } from '../middleware';
 
 const router = Router();
 
-router.get('/', (req, res) => {
-    const { priority, maxPrice, name } = req.query;
-    const filters: EntityFilters = {};
-    if (typeof priority === 'string' && ['low', 'medium', 'high'].includes(priority)) {
-        filters.priority = priority as 'low' | 'medium' | 'high';
+router.get('/', async (req, res, next) => {
+    try {
+        const { priority, maxPrice, name } = req.query;
+        const filters: EntityFilters = {};
+        if (typeof priority === 'string' && ['low', 'medium', 'high'].includes(priority)) {
+            filters.priority = priority as 'low' | 'medium' | 'high';
+        }
+        if (typeof maxPrice === 'string' && !isNaN(Number(maxPrice))) {
+            filters.maxPrice = Number(maxPrice);
+        }
+        if (typeof name === 'string') {
+            filters.name = name;
+        }
+        const items = await entityStorage.findAll(filters);
+        res.status(200).json(items);
+    } catch (error) {
+        next(error);
     }
-    if (typeof maxPrice === 'string' && !isNaN(Number(maxPrice))) {
-        filters.maxPrice = Number(maxPrice);
-    }
-    if (typeof name === 'string') {
-        filters.name = name;
-    }
-    res.status(200).json(entityStorage.findAll(filters));
 });
 
-router.get('/:id', (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
     try {
-        const item = entityStorage.findById(req.params.id as string);
+        const item = await entityStorage.findById(req.params.id as string);
         if (!item) {
             res.status(404).json({ error: 'Item not found' });
             return;
@@ -33,18 +38,18 @@ router.get('/:id', (req, res, next) => {
     }
 });
 
-router.post('/', validate(createSchema), (req, res, next) => {
+router.post('/', validate(createSchema), async (req, res, next) => {
     try {
-        const newItem = entityStorage.create(req.body);
+        const newItem = await entityStorage.create(req.body);
         res.status(201).json(newItem);
     } catch (error) {
         next(error);
     }
 });
 
-router.put('/:id', validate(updateSchema), (req, res, next) => {
+router.put('/:id', validate(updateSchema), async (req, res, next) => {
     try {
-        const updated = entityStorage.update(req.params.id as string, req.body);
+        const updated = await entityStorage.update(req.params.id as string, req.body);
         if (!updated) {
             res.status(404).json({ error: 'Item not found' });
             return;
@@ -55,9 +60,9 @@ router.put('/:id', validate(updateSchema), (req, res, next) => {
     }
 });
 
-router.delete('/:id', (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
     try {
-        const success = entityStorage.delete(req.params.id as string);
+        const success = await entityStorage.delete(req.params.id as string);
         if (!success) {
             res.status(404).json({ error: 'Item not found' });
             return;

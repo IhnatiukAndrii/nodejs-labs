@@ -1,63 +1,40 @@
-import { randomUUID } from 'crypto';
+import { WishlistItem } from '../models/entity.model';
 import { Entity, EntityFilters } from '../schemas/entity.schema';
 
-const storage = new Map<string, Entity>();
-
 export const entityStorage = {
-    findAll(filters?: EntityFilters): Entity[] {
-        let results = Array.from(storage.values());
-        if (!filters) {
-            return results;
+    async findAll(filters?: EntityFilters): Promise<any[]> {
+        const query: any = {};
+        if (filters) {
+            if (filters.priority) {
+                query.priority = filters.priority;
+            }
+            if (filters.maxPrice !== undefined) {
+                query.price = { $lte: filters.maxPrice };
+            }
+            if (filters.name) {
+                query.name = { $regex: filters.name, $options: 'i' };
+            }
         }
-        if (filters.priority) {
-            results = results.filter(item => item.priority === filters.priority);
-        }
-        if (filters.maxPrice !== undefined) {
-            results = results.filter(item => item.price <= filters.maxPrice!);
-        }
-        if (filters.name) {
-            const search = filters.name.toLowerCase();
-            results = results.filter(item => item.name.toLowerCase().includes(search));
-        }
-        return results;
+        return WishlistItem.find(query);
     },
 
-    findById(id: string): Entity | undefined {
-        return storage.get(id);
+    async findById(id: string): Promise<any | null> {
+        return WishlistItem.findById(id);
     },
 
-    create(item: Omit<Entity, 'id' | 'createdAt' | 'updatedAt'>): Entity {
-        const id = randomUUID();
-        const now = new Date();
-        const newItem: Entity = {
-            ...item,
-            id,
-            createdAt: now,
-            updatedAt: now
-        };
-        storage.set(id, newItem);
-        return newItem;
+    async create(item: Omit<Entity, 'id' | 'createdAt' | 'updatedAt'>): Promise<any> {
+        return WishlistItem.create(item);
     },
 
-    update(id: string, item: Partial<Omit<Entity, 'id' | 'createdAt' | 'updatedAt'>>): Entity | undefined {
-        const existing = storage.get(id);
-        if (!existing) {
-            return undefined;
-        }
-        const updatedItem: Entity = {
-            ...existing,
-            ...item,
-            updatedAt: new Date()
-        };
-        storage.set(id, updatedItem);
-        return updatedItem;
+    async update(id: string, item: Partial<Omit<Entity, 'id' | 'createdAt' | 'updatedAt'>>): Promise<any | null> {
+        return WishlistItem.findByIdAndUpdate(id, item, {
+            new: true,
+            runValidators: true
+        });
     },
 
-    delete(id: string): boolean {
-        return storage.delete(id);
-    },
-
-    reset(): void {
-        storage.clear();
+    async delete(id: string): Promise<boolean> {
+        const result = await WishlistItem.findByIdAndDelete(id);
+        return result !== null;
     }
 };
