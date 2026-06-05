@@ -36,8 +36,13 @@ describe('Wishlist API Integration Tests', () => {
         expect(res.body).toEqual([]);
     });
 
-    it('GET /entities/:id should return 404 for non-existent ID', async () => {
+    it('GET /entities/:id should return 400 for invalid ID format', async () => {
         const res = await request(app).get('/entities/non-existent-uuid');
+        expect(res.status).toBe(400);
+    });
+
+    it('GET /entities/:id should return 404 for valid format but non-existent ID', async () => {
+        const res = await request(app).get('/entities/507f1f77bcf86cd799439011');
         expect(res.status).toBe(404);
         expect(res.body).toEqual({ error: 'Item not found' });
     });
@@ -109,8 +114,13 @@ describe('Wishlist API Integration Tests', () => {
         expect(res.body.priority).toBe(validItem.priority);
     });
 
-    it('PUT /entities/:id should return 404 if updating non-existent item', async () => {
+    it('PUT /entities/:id should return 400 if updating invalid ID format', async () => {
         const res = await request(app).put('/entities/non-existent-uuid').send({ name: 'New Name' });
+        expect(res.status).toBe(400);
+    });
+
+    it('PUT /entities/:id should return 404 if updating valid format but non-existent ID', async () => {
+        const res = await request(app).put('/entities/507f1f77bcf86cd799439011').send({ name: 'New Name' });
         expect(res.status).toBe(404);
     });
 
@@ -123,8 +133,13 @@ describe('Wishlist API Integration Tests', () => {
         expect(getRes.status).toBe(404);
     });
 
-    it('DELETE /entities/:id should return 404 if deleting non-existent item', async () => {
+    it('DELETE /entities/:id should return 400 if deleting invalid ID format', async () => {
         const res = await request(app).delete('/entities/non-existent-uuid');
+        expect(res.status).toBe(400);
+    });
+
+    it('DELETE /entities/:id should return 404 if deleting valid format but non-existent ID', async () => {
+        const res = await request(app).delete('/entities/507f1f77bcf86cd799439011');
         expect(res.status).toBe(404);
     });
 
