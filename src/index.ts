@@ -2,11 +2,13 @@ export * from './delay';
 export * from './fetchUserProfiles';
 export * from './retryOperation';
 export * from './processInBatches';
+export * from './raceWithTimeout';
 
 import { delay } from './delay';
 import { fetchUserProfiles } from './fetchUserProfiles';
 import { retryOperation } from './retryOperation';
 import { processInBatches } from './processInBatches';
+import { raceWithTimeout } from './raceWithTimeout';
 
 if (require.main === module) {
     (async () => {
@@ -39,6 +41,20 @@ if (require.main === module) {
             };
             const results = await processInBatches(numbers, 3, processor);
             console.log('Результат processInBatches:', results);
+
+            console.log('\n--- Тестування функції raceWithTimeout ---');
+            const fast = delay(50).then(() => 'Готово');
+            const result1 = await raceWithTimeout(fast, 100);
+            console.log('Результат fast:', result1);
+
+            const slow = delay(200).then(() => 'Готово');
+            try {
+                await raceWithTimeout(slow, 100);
+            } catch (err) {
+                if (err instanceof Error) {
+                    console.error('Помилка slow:', err.message);
+                }
+            }
 
             console.log('\n=== Запуск прикладу завершено успішно ===');
         } catch (error) {
