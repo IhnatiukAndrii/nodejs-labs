@@ -15,3 +15,9 @@ export type Entity = z.infer<typeof createSchema> & {
     createdAt: Date;
     updatedAt: Date;
 };
+
+export interface EntityFilters {
+    priority?: 'low' | 'medium' | 'high';
+    maxPrice?: number;
+    name?: string;
+}

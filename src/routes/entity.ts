@@ -1,12 +1,23 @@
 import { Router } from 'express';
 import { entityStorage } from '../storage/entity';
-import { createSchema, updateSchema } from '../schemas/entity.schema';
+import { createSchema, updateSchema, EntityFilters } from '../schemas/entity.schema';
 import { validate } from '../middleware';
 
 const router = Router();
 
 router.get('/', (req, res) => {
-    res.status(200).json(entityStorage.findAll());
+    const { priority, maxPrice, name } = req.query;
+    const filters: EntityFilters = {};
+    if (typeof priority === 'string' && ['low', 'medium', 'high'].includes(priority)) {
+        filters.priority = priority as 'low' | 'medium' | 'high';
+    }
+    if (typeof maxPrice === 'string' && !isNaN(Number(maxPrice))) {
+        filters.maxPrice = Number(maxPrice);
+    }
+    if (typeof name === 'string') {
+        filters.name = name;
+    }
+    res.status(200).json(entityStorage.findAll(filters));
 });
 
 router.get('/:id', (req, res, next) => {

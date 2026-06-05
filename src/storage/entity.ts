@@ -1,11 +1,25 @@
 import { randomUUID } from 'crypto';
-import { Entity } from '../schemas/entity.schema';
+import { Entity, EntityFilters } from '../schemas/entity.schema';
 
 const storage = new Map<string, Entity>();
 
 export const entityStorage = {
-    findAll(): Entity[] {
-        return Array.from(storage.values());
+    findAll(filters?: EntityFilters): Entity[] {
+        let results = Array.from(storage.values());
+        if (!filters) {
+            return results;
+        }
+        if (filters.priority) {
+            results = results.filter(item => item.priority === filters.priority);
+        }
+        if (filters.maxPrice !== undefined) {
+            results = results.filter(item => item.price <= filters.maxPrice!);
+        }
+        if (filters.name) {
+            const search = filters.name.toLowerCase();
+            results = results.filter(item => item.name.toLowerCase().includes(search));
+        }
+        return results;
     },
 
     findById(id: string): Entity | undefined {
