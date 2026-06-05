@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Entity } from '../schemas/entity.schema';
 
 const storage = new Map<string, Entity>();
@@ -12,7 +13,7 @@ export const entityStorage = {
     },
 
     create(item: Omit<Entity, 'id' | 'createdAt' | 'updatedAt'>): Entity {
-        const id = Math.random().toString(36).substring(2, 9);
+        const id = randomUUID();
         const now = new Date();
         const newItem: Entity = {
             ...item,
