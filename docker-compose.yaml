@@ -1,0 +1,25 @@
+services:
+  mongo:
+    image: mongo:8
+    container_name: wishlist-db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: secretpassword
+      MONGO_INITDB_DATABASE: wishlist
+    volumes:
+      - mongo-data:/data/db
+
+  app:
+    build: .
+    container_name: wishlist-app
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongo
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGODB_URI: mongodb://admin:secretpassword@mongo:27017/wishlist?authSource=admin
+
+volumes:
+  mongo-data:
